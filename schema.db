@@ -1,0 +1,154 @@
+CREATE TABLE `Rama` (
+    `idRama` integer PRIMARY KEY AUTOINCREMENT,
+    `NombreRama` text NOT NULL
+);
+CREATE TABLE `Categoria` (
+    `idCategoria` integer PRIMARY KEY AUTOINCREMENT,
+    `NombreCategoria` text NOT NULL
+);
+CREATE TABLE `Deportes` (
+    `idDeporte` integer PRIMARY KEY AUTOINCREMENT,
+    `NombreDeporte` text NOT NULL
+);
+CREATE TABLE `Posiciones` (
+    `idPosicion` integer PRIMARY KEY AUTOINCREMENT,
+    `Nombre` text NOT NULL
+);
+CREATE TABLE `EstadosJugador` (
+    `idEstadoJugador` integer PRIMARY KEY AUTOINCREMENT,
+    `Estado` text NOT NULL
+);
+CREATE TABLE `estadosPartido` (
+    `idEstadoPartido` integer PRIMARY KEY AUTOINCREMENT,
+    `estadoPartido` text NOT NULL
+);
+CREATE TABLE `Tipo_partido` (
+    `idTipoPartido` integer PRIMARY KEY AUTOINCREMENT,
+    `TipoPartido` text NOT NULL
+);
+CREATE TABLE `Entrenadores` (
+    `idEntrenador` integer PRIMARY KEY AUTOINCREMENT,
+    `NombreEntrenador` text NOT NULL,
+    `ApellidoPaEntrenador` text NOT NULL,
+    `ApellidoMaEntrenador` text,
+    `FechaNacimiento_entrenador` text,
+    `LugarDeOrigenEntrenador` text
+);
+CREATE TABLE `Equipos` (
+    `idEquipo` integer PRIMARY KEY AUTOINCREMENT,
+    `NombreEquipo` text NOT NULL,
+    `idCategoria` integer,
+    `idDeporte` integer,
+    `idRama` integer,
+    CONSTRAINT `fk_Equipos_idRama_Rama_idRama_fk` FOREIGN KEY (`idRama`) REFERENCES `Rama`(`idRama`),
+    CONSTRAINT `fk_Equipos_idDeporte_Deportes_idDeporte_fk` FOREIGN KEY (`idDeporte`) REFERENCES `Deportes`(`idDeporte`),
+    CONSTRAINT `fk_Equipos_idCategoria_Categoria_idCategoria_fk` FOREIGN KEY (`idCategoria`) REFERENCES `Categoria`(`idCategoria`)
+);
+CREATE TABLE `Jugadores` (
+    `idJugador` integer PRIMARY KEY,
+    `NombreJugador` text NOT NULL,
+    `ApellidoPJugador` text NOT NULL,
+    `ApellidoMJugador` text,
+    `FechaNacimiento` text,
+    `EstaturaJugador` real,
+    `PesoJugador` real,
+    `SemestreJugador` integer,
+    `idPosicion` integer,
+    `idEquipo` integer,
+    `idEstadoJugador` integer,
+    `LugarDeOrigenJugador` text,
+    `NumeroJugador` integer,
+    CONSTRAINT `fk_Jugadores_idEstadoJugador_EstadosJugador_idEstadoJugador_fk` FOREIGN KEY (`idEstadoJugador`) REFERENCES `EstadosJugador`(`idEstadoJugador`),
+    CONSTRAINT `fk_Jugadores_idEquipo_Equipos_idEquipo_fk` FOREIGN KEY (`idEquipo`) REFERENCES `Equipos`(`idEquipo`),
+    CONSTRAINT `fk_Jugadores_idPosicion_Posiciones_idPosicion_fk` FOREIGN KEY (`idPosicion`) REFERENCES `Posiciones`(`idPosicion`)
+);
+CREATE TABLE `Partido` (
+    `idPartido` integer PRIMARY KEY AUTOINCREMENT,
+    `fecha` text NOT NULL,
+    `horaInicio` text,
+    `horaTermino` text,
+    `idEstadoPartido` integer,
+    `idTipoPartido` integer,
+    `ubicacion` text,
+    `localia` integer,
+    CONSTRAINT `fk_Partido_idTipoPartido_Tipo_partido_idTipoPartido_fk` FOREIGN KEY (`idTipoPartido`) REFERENCES `Tipo_partido`(`idTipoPartido`),
+    CONSTRAINT `fk_Partido_idEstadoPartido_estadosPartido_idEstadoPartido_fk` FOREIGN KEY (`idEstadoPartido`) REFERENCES `estadosPartido`(`idEstadoPartido`)
+);
+CREATE TABLE `EquiposEntrenadores` (
+    `idEquipoEntrenador` integer PRIMARY KEY AUTOINCREMENT,
+    `idEquipo` integer,
+    `idEntrenador` integer,
+    CONSTRAINT `fk_EquiposEntrenadores_idEntrenador_Entrenadores_idEntrenador_fk` FOREIGN KEY (`idEntrenador`) REFERENCES `Entrenadores`(`idEntrenador`) ON DELETE CASCADE,
+    CONSTRAINT `fk_EquiposEntrenadores_idEquipo_Equipos_idEquipo_fk` FOREIGN KEY (`idEquipo`) REFERENCES `Equipos`(`idEquipo`) ON DELETE CASCADE
+);
+CREATE TABLE `JugadoresPartido` (
+    `idJugadoresPartido` integer PRIMARY KEY AUTOINCREMENT,
+    `idJugador` integer,
+    `idPartido` integer,
+    `Localia` integer,
+    CONSTRAINT `fk_JugadoresPartido_idPartido_Partido_idPartido_fk` FOREIGN KEY (`idPartido`) REFERENCES `Partido`(`idPartido`) ON DELETE CASCADE,
+    CONSTRAINT `fk_JugadoresPartido_idJugador_Jugadores_idJugador_fk` FOREIGN KEY (`idJugador`) REFERENCES `Jugadores`(`idJugador`) ON DELETE CASCADE
+);
+CREATE TABLE `estadisticasEquipo` (
+    `idEstadisticasEquipo` integer PRIMARY KEY AUTOINCREMENT,
+    `idEquipo` integer,
+    `idPartido` integer,
+    `marcadorPrimerCuartoE` integer DEFAULT 0,
+    `marcadorSegundoCuartoE` integer DEFAULT 0,
+    `marcadorTercerCuartoE` integer DEFAULT 0,
+    `marcadorCuartoCuartoE` integer DEFAULT 0,
+    `marcadorFinalE` integer DEFAULT 0,
+    `2PM` integer DEFAULT 0,
+    `2PA` integer DEFAULT 0,
+    `2P%` real DEFAULT 0.0,
+    `3PM` integer DEFAULT 0,
+    `3PA` integer DEFAULT 0,
+    `3P%` real DEFAULT 0.0,
+    `FGM` integer DEFAULT 0,
+    `FGA` integer DEFAULT 0,
+    `FG%` real DEFAULT 0.0,
+    `FTM` integer DEFAULT 0,
+    `FTA` integer DEFAULT 0,
+    `FT%` real DEFAULT 0.0,
+    `OReb` integer DEFAULT 0,
+    `DReb` integer DEFAULT 0,
+    `Reb` integer DEFAULT 0,
+    `Ast` integer DEFAULT 0,
+    `TOV` integer DEFAULT 0,
+    `STL` integer DEFAULT 0,
+    `BLK` integer DEFAULT 0,
+    `SR` integer DEFAULT 0,
+    `PF` integer DEFAULT 0,
+    `PTS` integer DEFAULT 0,
+    CONSTRAINT `fk_estadisticasEquipo_idPartido_Partido_idPartido_fk` FOREIGN KEY (`idPartido`) REFERENCES `Partido`(`idPartido`) ON DELETE CASCADE,
+    CONSTRAINT `fk_estadisticasEquipo_idEquipo_Equipos_idEquipo_fk` FOREIGN KEY (`idEquipo`) REFERENCES `Equipos`(`idEquipo`)
+);
+CREATE TABLE `estadisticasJugador` (
+    `idEstadisticasJugador` integer PRIMARY KEY AUTOINCREMENT,
+    `idJugadoresPartido` integer,
+    `idEstadisticasEquipo` integer,
+    `minutos` integer DEFAULT 0,
+    `puntos` integer DEFAULT 0,
+    `promedioPuntos` real DEFAULT 0.0,
+    `reboteOfensivo` integer DEFAULT 0,
+    `reboteDefensivo` integer DEFAULT 0,
+    `totalRebotes` integer DEFAULT 0,
+    `asistencia` integer DEFAULT 0,
+    `perdida` integer DEFAULT 0,
+    `robos` integer DEFAULT 0,
+    `bloqueos` integer DEFAULT 0,
+    `faltasPersonales` integer DEFAULT 0,
+    `two_pm` integer DEFAULT 0,
+    `two_pa` integer DEFAULT 0,
+    `three_pm` integer DEFAULT 0,
+    `three_pa` integer DEFAULT 0,
+    `ftm` integer DEFAULT 0,
+    `fta` integer DEFAULT 0,
+    `eficiencia` integer DEFAULT 0,
+    `PFD` integer DEFAULT 0,
+    `PIR` integer DEFAULT 0,
+    `EFF` integer DEFAULT 0,
+    `plus_minus` integer DEFAULT 0,
+    CONSTRAINT `fk_estadisticasJugador_idEstadisticasEquipo_estadisticasEquipo_idEstadisticasEquipo_fk` FOREIGN KEY (`idEstadisticasEquipo`) REFERENCES `estadisticasEquipo`(`idEstadisticasEquipo`) ON DELETE CASCADE,
+    CONSTRAINT `fk_estadisticasJugador_idJugadoresPartido_JugadoresPartido_idJugadoresPartido_fk` FOREIGN KEY (`idJugadoresPartido`) REFERENCES `JugadoresPartido`(`idJugadoresPartido`) ON DELETE CASCADE
+);

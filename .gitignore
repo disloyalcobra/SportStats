@@ -1,0 +1,25 @@
+# Dependencies
+sportstats/node_modules/
+sportstats/.pnp
+sportstats/.pnp.*
+sportstats/.yarn/*
+
+# Next.js build and cache
+sportstats/.next/
+sportstats/out/
+sportstats/build/
+
+# Environment files (sensitive credentials)
+sportstats/.env*
+
+# Vercel
+sportstats/.vercel
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
