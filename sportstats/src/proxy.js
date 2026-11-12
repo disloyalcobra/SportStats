@@ -4,9 +4,13 @@ import { NextResponse } from 'next/server';
 // La validación real (token en BD) la hace cada Route Handler con requireUser().
 const SESSION_COOKIE = 'ss_session';
 const PUBLIC_PAGES = ['/login', '/registro'];
+// Accesibles siempre, con o sin sesión
+const ALWAYS_PUBLIC = ['/terminos'];
 
 export function proxy(request) {
   const { pathname, search } = request.nextUrl;
+  if (ALWAYS_PUBLIC.includes(pathname)) return NextResponse.next();
+
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
   const isPublic = PUBLIC_PAGES.includes(pathname);
 

@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import SiteFooter from '@/components/SiteFooter';
 
 /**
  * Formulario compartido de inicio de sesión / registro.
@@ -104,6 +105,8 @@ export default function AuthForm({ mode }) {
           )}
         </div>
       </form>
+
+      <SiteFooter variant="dark" />
     </div>
   );
 }

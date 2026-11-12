@@ -1,5 +1,6 @@
 'use client';
 import Sidebar from '@/components/Sidebar';
+import SiteFooter from '@/components/SiteFooter';
 
 export default function AppShell({ children, title, subtitle, actions }) {
   return (
@@ -18,6 +19,7 @@ export default function AppShell({ children, title, subtitle, actions }) {
         <main className="page-body">
           {children}
         </main>
+        <SiteFooter />
       </div>
     </div>
   );
