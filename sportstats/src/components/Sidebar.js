@@ -12,9 +12,10 @@ const navItems = [
   { href: '/jugadores', label: 'Jugadores', icon: 'JG', section: 'Gestión' },
   { href: '/entrenadores', label: 'Entrenadores', icon: 'EN', section: 'Gestión' },
   { href: '/reportes', label: 'Reportes', icon: 'RP', section: 'Análisis' },
+  { href: '/cuenta', label: 'Mi cuenta', icon: 'MC', section: 'Cuenta' },
 ];
 
-const sections = ['Principal', 'Gestión', 'Análisis'];
+const sections = ['Principal', 'Gestión', 'Análisis', 'Cuenta'];
 
 async function logout() {
   try {
@@ -24,7 +25,7 @@ async function logout() {
   }
 }
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onNavigate }) {
   const pathname = usePathname();
   const [usuario, setUsuario] = useState(null);
 
@@ -42,8 +43,9 @@ export default function Sidebar() {
   }, []);
 
   return (
-    <aside className="sidebar">
+    <aside id="sidebar" className={`sidebar${open ? ' open' : ''}`}>
       <div className="sidebar-logo">
+        <button type="button" className="sidebar-close" onClick={onNavigate} aria-label="Cerrar menú">✕</button>
         <div className="logo-icon">SS</div>
         <div>
           <div className="logo-text">SportStats</div>
@@ -61,7 +63,7 @@ export default function Sidebar() {
                 const isActive = pathname === item.href ||
                   (item.href !== '/' && pathname.startsWith(item.href));
                 return (
-                  <Link key={item.href} href={item.href}>
+                  <Link key={item.href} href={item.href} onClick={onNavigate}>
                     <div className={`nav-item ${isActive ? 'active' : ''}`}>
                       <span style={{ fontSize: 18 }}>{item.icon}</span>
                       <span>{item.label}</span>
@@ -78,10 +80,10 @@ export default function Sidebar() {
         <div className="sidebar-user-avatar" aria-hidden="true">
           {(usuario?.nombre || '?').trim().charAt(0).toUpperCase()}
         </div>
-        <div className="sidebar-user-info">
+        <Link href="/cuenta" className="sidebar-user-info" onClick={onNavigate} title="Mi cuenta · cambiar contraseña">
           <div className="sidebar-user-name">{usuario?.nombre || '…'}</div>
           <div className="sidebar-user-email">{usuario?.email || ''}</div>
-        </div>
+        </Link>
         <button className="sidebar-logout" onClick={logout} title="Cerrar sesión">
           Salir
         </button>

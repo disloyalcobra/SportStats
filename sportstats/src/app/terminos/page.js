@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import SiteFooter from '@/components/SiteFooter';
+import { CORREO_SOPORTE } from '@/lib/contacto';
 
 export const metadata = {
   title: 'Términos y condiciones y aviso de privacidad — SportStats',
@@ -65,6 +66,12 @@ export default function TerminosPage() {
           <ul>
             <li>Cada cuenta es personal. Eres responsable de mantener la confidencialidad de tu contraseña.</li>
             <li>
+              Si olvidas tu contraseña, escribe a{' '}
+              <a href={`mailto:${CORREO_SOPORTE}?subject=${encodeURIComponent('Recuperar cuenta SportStats')}`}>{CORREO_SOPORTE}</a>{' '}
+              desde el correo con el que te registraste. Se te enviará una contraseña temporal; nunca se te pedirá
+              tu contraseña actual.
+            </li>
+            <li>
               Eres responsable de la información que registras (nombres de jugadores, entrenadores, resultados, etc.)
               y de contar con la autorización de las personas involucradas, en especial cuando se trate de menores de edad.
             </li>
@@ -121,11 +128,11 @@ export default function TerminosPage() {
           <h3>2.4 Tus derechos</h3>
           <p>
             Puedes solicitar en cualquier momento el acceso, la corrección o la eliminación de tu cuenta y de toda tu
-            información. Para hacerlo, abre un reporte en{' '}
-            <a href={`${REPO}/issues`} target="_blank" rel="noopener noreferrer">el repositorio del proyecto</a>{' '}
-            o contacta al autor en{' '}
+            información. Para hacerlo, escribe a{' '}
+            <a href={`mailto:${CORREO_SOPORTE}`}>{CORREO_SOPORTE}</a>{' '}
+            desde el correo de tu cuenta, o contacta al autor en{' '}
             <a href="https://github.com/disloyalcobra" target="_blank" rel="noopener noreferrer">github.com/disloyalcobra</a>.
-            No publiques tu contraseña ni datos sensibles en el reporte.
+            Nunca envíes tu contraseña por correo.
           </p>
         </section>
       </main>

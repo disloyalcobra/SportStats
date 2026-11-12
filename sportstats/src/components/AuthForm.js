@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import SiteFooter from '@/components/SiteFooter';
+import { CORREO_SOPORTE } from '@/lib/contacto';
 
 /**
  * Formulario compartido de inicio de sesión / registro.
@@ -91,6 +92,20 @@ export default function AuthForm({ mode }) {
             <input id="confirm" type="password" className="form-input" required minLength={6}
               autoComplete="new-password" value={form.confirm} onChange={set('confirm')} />
           </div>
+        )}
+
+        {isLogin && (
+          <details className="auth-recover">
+            <summary>¿Olvidaste tu contraseña?</summary>
+            <p>
+              Escribe a{' '}
+              <a href={`mailto:${CORREO_SOPORTE}?subject=${encodeURIComponent('Recuperar cuenta SportStats')}&body=${encodeURIComponent('Hola, necesito recuperar el acceso a mi cuenta de SportStats.\n\nCorreo de mi cuenta: \nNombre con el que me registré: ')}`}>
+                {CORREO_SOPORTE}
+              </a>{' '}
+              <strong>desde el mismo correo con el que te registraste</strong>, indicando tu nombre. Te enviaremos una
+              contraseña temporal para que vuelvas a entrar.
+            </p>
+          </details>
         )}
 
         <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={loading}>
