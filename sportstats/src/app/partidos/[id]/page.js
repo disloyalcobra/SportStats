@@ -53,7 +53,7 @@ export default function PartidoDetallePage({ params }) {
   const handleChangeEstado = async (nuevoEstado) => {
     if (!data?.partido) return;
     const p = data.partido;
-    await fetch(`/api/partidos/${id}`, {
+    const res = await fetch(`/api/partidos/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -62,6 +62,11 @@ export default function PartidoDetallePage({ params }) {
         ubicacion: p.ubicacion, localia: p.localia,
       }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || 'No se pudo cambiar el estado del partido');
+      return;
+    }
     load();
   };
 
@@ -121,6 +126,20 @@ export default function PartidoDetallePage({ params }) {
 
       {partido && (
         <>
+          {data.torneo && (
+            <div className="alert alert-info mb-16"><div>
+              {data.torneo.tipoCompeticion === 'temporada' ? 'Partido de la temporada' : 'Partido del torneo'}{' '}
+              <Link href={`/${data.torneo.tipoCompeticion === 'temporada' ? 'temporadas' : 'torneos'}/${data.torneo.idTorneo}`}
+                style={{ fontWeight: 700, textDecoration: 'underline' }}>
+                {data.torneo.nombreTorneo}
+              </Link>
+              {data.torneo.fase === 'eliminatoria'
+                ? ` · ${data.torneo.tipoCompeticion === 'temporada' ? 'Playoffs' : 'Eliminatoria'}, ronda ${data.torneo.ronda}`
+                : ` · ${data.torneo.grupo && data.torneo.tipoCompeticion !== 'temporada' ? `Grupo ${data.torneo.grupo}, ` : ''}jornada ${data.torneo.ronda}`}
+              . Al marcarlo como culminado, su marcador se registra en la {data.torneo.tipoCompeticion === 'temporada' ? 'temporada' : 'competición'}.
+            </div></div>
+          )}
+
           {/* Header Scorecard & Details */}
           <div className="grid-2 mb-24">
             {/* Score card principal */}

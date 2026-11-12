@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { withUser, assertOwns, owns, badRequest } from '@/lib/auth';
 
 function calcularStats(data) {
   const fgm = (data['2PM'] || 0) + (data['3PM'] || 0);
@@ -28,11 +29,12 @@ function calcularJugadorStats(d) {
 }
 
 // GET /api/estadisticas?idPartido=X - Obtener stats de un partido
-export async function GET(req) {
+export const GET = withUser(async (req, ctx, user) => {
   try {
     const { searchParams } = new URL(req.url);
     const idPartido = searchParams.get('idPartido');
     if (!idPartido) return NextResponse.json({ error: 'idPartido requerido' }, { status: 400 });
+    await assertOwns('Partido', idPartido, user.idUsuario, 'Partido');
 
     const [equipoRes, jugadorRes] = await Promise.all([
       db.execute({
@@ -57,15 +59,26 @@ export async function GET(req) {
       statsJugador: jugadorRes.rows,
     });
   } catch (error) {
+    if (error.status) throw error;
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});
 
 // POST /api/estadisticas - Guardar/actualizar stats de equipo y jugadores
-export async function POST(req) {
+export const POST = withUser(async (req, ctx, user) => {
   try {
     const body = await req.json();
     const { idPartido, idEquipo, statsEquipo, statsJugadores } = body;
+
+    await assertOwns('Partido', idPartido, user.idUsuario, 'Partido');
+    if (!(await owns('Equipos', idEquipo, user.idUsuario))) throw badRequest('Equipo no válido');
+
+    // Solo se aceptan registros de alineación que pertenezcan a este partido
+    const alineacionRes = await db.execute({
+      sql: 'SELECT idJugadoresPartido FROM JugadoresPartido WHERE idPartido = ?',
+      args: [idPartido],
+    });
+    const alineacionValida = new Set(alineacionRes.rows.map(r => Number(r.idJugadoresPartido)));
 
     // Verificar que el partido NO esté marcado como Culminado (idEstadoPartido = 1)
     const partidoCheck = await db.execute({
@@ -136,6 +149,7 @@ export async function POST(req) {
 
     // Upsert estadisticasJugador
     for (const sj of (statsJugadores || [])) {
+      if (!alineacionValida.has(Number(sj.idJugadoresPartido))) continue;
       const { pts: ptsJ, reb: rebJ, EFF, PIR } = calcularJugadorStats(sj);
       const existeJ = await db.execute({
         sql: 'SELECT idEstadisticasJugador FROM estadisticasJugador WHERE idJugadoresPartido=?',
@@ -181,7 +195,8 @@ export async function POST(req) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error.status) throw error;
     console.error('Stats error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

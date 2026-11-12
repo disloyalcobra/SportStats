@@ -137,6 +137,13 @@ export default function DashboardPage() {
                 <div className="kpi-label">Partidos próximos</div>
               </div>
             </div>
+            <Link href="/temporadas" className="kpi-card">
+              <div className="kpi-icon blue">TP</div>
+              <div>
+                <div className="kpi-value">{String(data.kpis.torneosActivos ?? 0)}</div>
+                <div className="kpi-label">Temporadas y torneos en curso</div>
+              </div>
+            </Link>
           </div>
 
           <div className="grid-2 mb-24">

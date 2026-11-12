@@ -9,6 +9,13 @@ import { Bar } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
+const TIPOS_PARTIDO = {
+  temporada: 'Temporada regular',
+  playoffs: 'Playoffs',
+  torneo: 'Torneo',
+  amistoso: 'Amistoso',
+};
+
 const TABS = [
   { key: 'puntos', label: 'Líderes de Puntos' },
   { key: 'rebotes', label: 'Líderes de Rebotes' },
@@ -22,14 +29,41 @@ export default function ReportesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState('puntos');
+  const [idTorneo, setIdTorneo] = useState('');
+  const [tipo, setTipo] = useState('');
 
   useEffect(() => {
-    fetch('/api/reportes')
+    const qs = new URLSearchParams();
+    if (idTorneo) qs.set('idTorneo', idTorneo);
+    if (tipo) qs.set('tipo', tipo);
+    fetch(`/api/reportes?${qs}`)
       .then(r => r.json())
       .then(d => { if (d.error) setError(d.error); else setData(d); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [idTorneo, tipo]);
+
+  const competiciones = data?.competiciones || [];
+  const temporadas = competiciones.filter(c => c.tipo === 'temporada');
+  const torneos = competiciones.filter(c => c.tipo !== 'temporada');
+
+  const [exportando, setExportando] = useState(false);
+  const exportarPdf = async () => {
+    setExportando(true);
+    try {
+      const { generarReportePdf } = await import('@/lib/reportePdf');
+      const comp = competiciones.find(c => String(c.idTorneo) === String(idTorneo));
+      await generarReportePdf(data, {
+        competicion: comp ? `${comp.nombre} (${comp.tipo === 'temporada' ? 'temporada' : 'torneo'})` : 'Todas',
+        competicionArchivo: comp ? comp.nombre : 'general',
+        tipo: TIPOS_PARTIDO[tipo] || 'Todos',
+      });
+    } catch (e) {
+      alert(`No se pudo generar el PDF: ${e.message}`);
+    } finally {
+      setExportando(false);
+    }
+  };
 
   const getChartData = () => {
     if (!data) return null;
@@ -134,12 +168,55 @@ export default function ReportesPage() {
   );
 
   return (
-    <AppShell title="Reportes y Estadísticas" subtitle="Líderes y estadísticas de la temporada">
+    <AppShell
+      title="Reportes y Estadísticas"
+      subtitle="Líderes y estadísticas por competición y tipo de partido"
+      actions={
+        <button className="btn btn-primary" onClick={exportarPdf} disabled={!data || exportando}
+          title="Descarga un PDF con los filtros actuales">
+          {exportando ? 'Generando PDF…' : 'Exportar PDF'}
+        </button>
+      }
+    >
       {loading && <div className="loading"><div className="spinner" /> Cargando reportes...</div>}
       {error && <div className="alert alert-error">{error}</div>}
 
       {data && (
         <>
+          {/* Filtros */}
+          <div className="card mb-24">
+            <div className="card-body" style={{ paddingTop: 12, paddingBottom: 12 }}>
+              <div className="flex-center gap-12 flex-wrap">
+                <label className="flex-center gap-8" style={{ fontSize: 13, fontWeight: 600 }}>
+                  Competición
+                  <select className="form-select" style={{ width: 240 }} value={idTorneo} onChange={e => setIdTorneo(e.target.value)}>
+                    <option value="">Todas</option>
+                    {temporadas.length > 0 && (
+                      <optgroup label="Temporadas">
+                        {temporadas.map(c => <option key={c.idTorneo} value={c.idTorneo}>{c.nombre}</option>)}
+                      </optgroup>
+                    )}
+                    {torneos.length > 0 && (
+                      <optgroup label="Torneos">
+                        {torneos.map(c => <option key={c.idTorneo} value={c.idTorneo}>{c.nombre}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+                <label className="flex-center gap-8" style={{ fontSize: 13, fontWeight: 600 }}>
+                  Tipo de partido
+                  <select className="form-select" style={{ width: 180 }} value={tipo} onChange={e => setTipo(e.target.value)}>
+                    <option value="">Todos</option>
+                    {Object.entries(TIPOS_PARTIDO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </label>
+                {(idTorneo || tipo) && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setIdTorneo(''); setTipo(''); }}>Limpiar</button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Tabs */}
           <div className="tabs">
             {TABS.map(t => (

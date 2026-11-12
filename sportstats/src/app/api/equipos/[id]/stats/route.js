@@ -1,7 +1,8 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { withUser } from '@/lib/auth';
 
-export async function GET(req, { params }) {
+export const GET = withUser(async (req, { params }, user) => {
   try {
     const { id } = await params;
     const { searchParams } = new URL(req.url);
@@ -16,9 +17,9 @@ export async function GET(req, { params }) {
         LEFT JOIN Categoria c ON e.idCategoria = c.idCategoria
         LEFT JOIN Deportes d ON e.idDeporte = d.idDeporte
         LEFT JOIN Rama r ON e.idRama = r.idRama
-        WHERE e.idEquipo = ?
+        WHERE e.idEquipo = ? AND e.idUsuario = ?
       `,
-      args: [id],
+      args: [id, user.idUsuario],
     });
 
     if (equipoRes.rows.length === 0) {
@@ -179,4 +180,4 @@ export async function GET(req, { params }) {
     console.error('Error fetching team stats:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

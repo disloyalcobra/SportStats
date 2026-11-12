@@ -3,11 +3,20 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
 import Link from 'next/link';
 
+// En Partidos solo se crean amistosos; el tipo lo asigna el servidor (spec 004)
 const empty = {
   fecha: '', horaInicio: '', horaTermino: '',
-  idEstadoPartido: 4, idTipoPartido: 2, ubicacion: '',
+  idEstadoPartido: 4, ubicacion: '',
   idEquipoLocal: '', idEquipoVisitante: '',
 };
+
+const rutaCompeticion = (tipo, id) => `/${tipo === 'temporada' ? 'temporadas' : 'torneos'}/${id}`;
+
+function describirRonda(p) {
+  if (!p.competicionFase) return '';
+  if (p.competicionFase === 'eliminatoria') return `${p.competicionTipo === 'temporada' ? 'Playoffs' : 'Eliminatoria'} · ronda ${p.competicionRonda}`;
+  return `Jornada ${p.competicionRonda}`;
+}
 
 function Modal({ title, onClose, children, maxWidth }) {
   return (
@@ -40,7 +49,9 @@ export default function PartidosPage() {
   const [saving, setSaving] = useState(false);
   const [filterEstado, setFilterEstado] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
+  const [filterComp, setFilterComp] = useState('');
   const [search, setSearch] = useState('');
+  const [ordenar, setOrdenar] = useState(null); // { partido, candidatos, error }
 
   // Control de orden de rosters en el modal (camiseta vs nombre)
   const [sortRosterBy, setSortRosterBy] = useState('numero'); // 'numero' | 'nombre'
@@ -67,7 +78,7 @@ export default function PartidosPage() {
   const openEdit = (p) => {
     setForm({
       fecha: p.fecha || '', horaInicio: p.horaInicio || '', horaTermino: p.horaTermino || '',
-      idEstadoPartido: p.idEstadoPartido || 4, idTipoPartido: p.idTipoPartido || 2,
+      idEstadoPartido: p.idEstadoPartido || 4,
       ubicacion: p.ubicacion || '',
       idEquipoLocal: p.idEquipoLocal || '', idEquipoVisitante: p.idEquipoVisitante || '',
     });
@@ -95,7 +106,7 @@ export default function PartidosPage() {
       const method = editId ? 'PUT' : 'POST';
       const payload = editId ? {
         fecha: form.fecha, horaInicio: form.horaInicio, horaTermino: form.horaTermino,
-        idEstadoPartido: form.idEstadoPartido, idTipoPartido: form.idTipoPartido,
+        idEstadoPartido: form.idEstadoPartido,
         ubicacion: form.ubicacion, localia: 1,
       } : {
         ...form,
@@ -114,15 +125,57 @@ export default function PartidosPage() {
       setModal(null);
       load();
     } catch (e) {
-      setError(e.message);
+      alert(e.message);
     } finally {
       setSaving(false);
     }
   };
 
+  // ---------- Ordenar partidos "sin competición" ----------
+  const abrirOrdenar = async (p) => {
+    setOrdenar({ partido: p, candidatos: null, error: null });
+    const res = await fetch(`/api/partidos/${p.idPartido}/asignar`);
+    const d = await res.json();
+    setOrdenar({ partido: p, candidatos: d.candidatos || [], error: d.error || null });
+  };
+
+  const asignar = async (idTorneoPartido) => {
+    const res = await fetch(`/api/partidos/${ordenar.partido.idPartido}/asignar`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idTorneoPartido }),
+    });
+    const d = await res.json();
+    if (!res.ok) return setOrdenar(o => ({ ...o, error: d.error }));
+    setOrdenar(null);
+    load();
+  };
+
+  const convertirEnAmistoso = async () => {
+    const p = ordenar.partido;
+    const res = await fetch(`/api/partidos/${p.idPartido}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fecha: p.fecha, horaInicio: p.horaInicio, horaTermino: p.horaTermino,
+        idEstadoPartido: p.idEstadoPartido, ubicacion: p.ubicacion, localia: p.localia,
+        idTipoPartido: data.catalogos.idTipoAmistoso,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) return setOrdenar(o => ({ ...o, error: d.error }));
+    setOrdenar(null);
+    load();
+  };
+
   const handleDelete = async (id) => {
     if (!confirm('¿Eliminar este partido y sus estadísticas asociadas?')) return;
-    await fetch(`/api/partidos/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/partidos/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || 'No se pudo eliminar el partido');
+      return;
+    }
     load();
   };
 
@@ -131,8 +184,11 @@ export default function PartidosPage() {
     return map[e] || 'badge-gray';
   };
   const tipoBadge = (t) => {
-    const map = { 'Temporada': 'badge-blue', 'Torneo': 'badge-purple', 'Amistoso': 'badge-gray', 'Eliminatoria': 'badge-red' };
-    return map[t] || 'badge-gray';
+    const n = (t || '').toLowerCase();
+    if (n.includes('playoff')) return 'badge-red';
+    if (n.includes('temporada')) return 'badge-blue';
+    if (n.includes('torneo')) return 'badge-purple';
+    return 'badge-gray';
   };
 
   const partidos = (data?.partidos || []).filter(p => {
@@ -141,8 +197,15 @@ export default function PartidosPage() {
       || (p.equipoVisitante || '').toLowerCase().includes(search.toLowerCase());
     const mE = !filterEstado || String(p.idEstadoPartido) === filterEstado;
     const mT = !filterTipo || String(p.idTipoPartido) === filterTipo;
-    return mS && mE && mT;
+    const mC = !filterComp
+      || (filterComp === 'amistosos' && !p.idTorneo && !p.sinCompeticion)
+      || (filterComp === 'sin' && p.sinCompeticion)
+      || String(p.idTorneo) === filterComp;
+    return mS && mE && mT && mC;
   });
+
+  const competiciones = data?.catalogos?.competiciones || [];
+  const sinCompeticion = (data?.partidos || []).filter(p => p.sinCompeticion).length;
 
   // Equipos disponibles
   const equipos = data?.catalogos?.equipos || [];
@@ -176,13 +239,24 @@ export default function PartidosPage() {
     <AppShell
       title="Partidos"
       subtitle={`${data?.partidos?.length ?? 0} partidos registrados`}
-      actions={<button className="btn btn-primary" onClick={openCreate}>+ Nuevo partido</button>}
+      actions={<button className="btn btn-primary" onClick={openCreate}>+ Nuevo amistoso</button>}
     >
       {loading && <div className="loading"><div className="spinner" /> Cargando partidos...</div>}
       {error && <div className="alert alert-error">⚠️ {error}</div>}
 
       {data && (
         <>
+          {sinCompeticion > 0 && (
+            <div className="alert alert-info mb-16">
+              <div>
+                Tienes <strong>{sinCompeticion}</strong> partido{sinCompeticion > 1 ? 's' : ''} de tipo Temporada o Torneo
+                sin competición asignada. Usa <strong>Ordenar</strong> para vincularlo{sinCompeticion > 1 ? 's' : ''} a su
+                temporada o torneo, o convertirlo{sinCompeticion > 1 ? 's' : ''} en amistoso.{' '}
+                <button className="btn btn-ghost btn-sm" onClick={() => setFilterComp('sin')}>Ver solo esos</button>
+              </div>
+            </div>
+          )}
+
           {/* Filtros */}
           <div className="card mb-24">
             <div className="card-body" style={{ paddingTop: 12, paddingBottom: 12 }}>
@@ -199,8 +273,24 @@ export default function PartidosPage() {
                   <option value="">Todos los tipos</option>
                   {data.catalogos.tipos.map(t => <option key={t.idTipoPartido} value={t.idTipoPartido}>{t.TipoPartido}</option>)}
                 </select>
-                {(search || filterEstado || filterTipo) && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setFilterEstado(''); setFilterTipo(''); }}>Limpiar</button>
+                <select className="form-select" style={{ width: 220 }} value={filterComp} onChange={e => setFilterComp(e.target.value)}
+                  aria-label="Filtrar por competición">
+                  <option value="">Todas las competiciones</option>
+                  <option value="amistosos">Solo amistosos</option>
+                  <option value="sin">Sin competición</option>
+                  {competiciones.some(c => c.tipo === 'temporada') && (
+                    <optgroup label="Temporadas">
+                      {competiciones.filter(c => c.tipo === 'temporada').map(c => <option key={c.idTorneo} value={c.idTorneo}>{c.nombre}</option>)}
+                    </optgroup>
+                  )}
+                  {competiciones.some(c => c.tipo !== 'temporada') && (
+                    <optgroup label="Torneos">
+                      {competiciones.filter(c => c.tipo !== 'temporada').map(c => <option key={c.idTorneo} value={c.idTorneo}>{c.nombre}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+                {(search || filterEstado || filterTipo || filterComp) && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setSearch(''); setFilterEstado(''); setFilterTipo(''); setFilterComp(''); }}>Limpiar</button>
                 )}
               </div>
             </div>
@@ -249,7 +339,21 @@ export default function PartidosPage() {
                         <td>
                           <div style={{ fontWeight: 600 }}>Visitante: {p.equipoVisitante || '—'}</div>
                         </td>
-                        <td><span className={`badge ${tipoBadge(p.TipoPartido)}`}>{p.TipoPartido}</span></td>
+                        <td>
+                          <span className={`badge ${tipoBadge(p.TipoPartido)}`}>{p.TipoPartido}</span>
+                          {p.torneoNombre && (
+                            <Link href={rutaCompeticion(p.competicionTipo, p.idTorneo)} style={{ display: 'block', fontSize: 12, color: 'var(--primary-mid)', fontWeight: 600, marginTop: 4 }}>
+                              {p.torneoNombre}
+                              <span style={{ display: 'block', color: 'var(--text-muted)', fontWeight: 500 }}>{describirRonda(p)}</span>
+                            </Link>
+                          )}
+                          {p.sinCompeticion && (
+                            <div style={{ marginTop: 4 }}>
+                              <span className="badge badge-yellow">Sin competición</span>
+                              <button className="btn btn-ghost btn-sm" style={{ marginLeft: 6 }} onClick={() => abrirOrdenar(p)}>Ordenar</button>
+                            </div>
+                          )}
+                        </td>
                         <td><span className={`badge ${estadoBadge(p.estadoPartido)}`}>{p.estadoPartido}</span></td>
                         <td>{p.ubicacion || '—'}</td>
                         <td>
@@ -282,8 +386,17 @@ export default function PartidosPage() {
       )}
 
       {modal === 'form' && (
-        <Modal title={editId ? 'Editar Partido' : 'Nuevo Partido (Próximo)'} onClose={() => setModal(null)}>
+        <Modal title={editId ? 'Editar partido' : 'Nuevo amistoso'} onClose={() => setModal(null)}>
           <div className="modal-body">
+            {!editId && (
+              <div className="alert alert-info mb-16">
+                <div>
+                  Aquí solo se crean <strong>amistosos</strong>. Los partidos de temporada, playoffs y torneo se generan
+                  automáticamente al crear una <Link href="/temporadas" style={{ fontWeight: 700, textDecoration: 'underline' }}>temporada</Link> o
+                  un <Link href="/torneos" style={{ fontWeight: 700, textDecoration: 'underline' }}>torneo</Link>.
+                </div>
+              </div>
+            )}
             {/* Selección de Equipos (únicamente en Creación) */}
             {!editId && (
               <div className="card mb-16" style={{ background: 'var(--gray-bg)', padding: '16px' }}>
@@ -410,10 +523,12 @@ export default function PartidosPage() {
             </div>
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label">Tipo de Partido</label>
-                <select className="form-select" value={form.idTipoPartido} onChange={e => setForm({ ...form, idTipoPartido: e.target.value })}>
-                  {data?.catalogos?.tipos?.map(t => <option key={t.idTipoPartido} value={t.idTipoPartido}>{t.TipoPartido}</option>)}
-                </select>
+                <span className="form-label">Tipo de Partido</span>
+                <div className="form-hint" style={{ marginTop: 10 }}>
+                  {editId
+                    ? 'Lo determina su competición (no se puede cambiar).'
+                    : 'Amistoso'}
+                </div>
               </div>
               <div className="form-group">
                 <label className="form-label">Estado Inicial</label>
@@ -426,8 +541,61 @@ export default function PartidosPage() {
           <div className="modal-footer">
             <button className="btn btn-ghost" onClick={() => setModal(null)}>Cancelar</button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar y Cargar Rosters'}
+              {saving ? 'Guardando...' : editId ? 'Guardar' : 'Crear amistoso'}
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {ordenar && (
+        <Modal title="Ordenar partido" onClose={() => setOrdenar(null)} maxWidth={620}>
+          <div className="modal-body">
+            <p style={{ fontSize: 14, marginBottom: 12 }}>
+              <strong>{ordenar.partido.equipoLocal}</strong> vs <strong>{ordenar.partido.equipoVisitante}</strong>
+              {' · '}{formatFecha(ordenar.partido.fecha)} · <span className={`badge ${tipoBadge(ordenar.partido.TipoPartido)}`}>{ordenar.partido.TipoPartido}</span>
+            </p>
+            {ordenar.error && <div className="alert alert-error mb-16" role="alert">{ordenar.error}</div>}
+
+            <div className="form-label">Asignar a un enfrentamiento pendiente</div>
+            {ordenar.candidatos === null ? (
+              <div className="loading" style={{ minHeight: 80 }}><div className="spinner" /> Buscando…</div>
+            ) : ordenar.candidatos.length === 0 ? (
+              <div className="alert alert-info mb-16">
+                <div>
+                  No hay enfrentamientos pendientes entre estos dos equipos en tus temporadas o torneos.
+                  Crea la temporada o torneo con ambos equipos y vuelve aquí.
+                </div>
+              </div>
+            ) : (
+              <div className="fixture-list mb-16">
+                {ordenar.candidatos.map(c => (
+                  <div key={c.idTorneoPartido} className="fixture" style={{ gridTemplateColumns: '1fr auto' }}>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>
+                        <span className={`badge ${c.tipo === 'temporada' ? 'badge-blue' : 'badge-purple'}`} style={{ marginRight: 6 }}>
+                          {c.tipo === 'temporada' ? 'Temporada' : 'Torneo'}
+                        </span>
+                        {c.competicion}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {c.fase === 'eliminatoria'
+                          ? `${c.tipo === 'temporada' ? 'Playoffs' : 'Eliminatoria'} · ronda ${c.ronda}`
+                          : `Jornada ${c.ronda}`} · {c.local} vs {c.visitante}
+                      </div>
+                    </div>
+                    <button className="btn btn-primary btn-sm" onClick={() => asignar(c.idTorneoPartido)}>Asignar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="form-hint">
+              Al asignarlo, el partido toma el tipo de la competición y reemplaza al partido programado automáticamente.
+              Si ya está culminado, su resultado se registra en la tabla o el cuadro.
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={convertirEnAmistoso}>Convertir en amistoso</button>
+            <button className="btn btn-ghost" onClick={() => setOrdenar(null)}>Cerrar</button>
           </div>
         </Modal>
       )}

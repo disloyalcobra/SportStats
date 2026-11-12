@@ -1,10 +1,13 @@
 'use client';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: 'DB', section: 'Principal' },
   { href: '/partidos', label: 'Partidos', icon: 'PT', section: 'Gestión' },
+  { href: '/temporadas', label: 'Temporadas', icon: 'TP', section: 'Gestión' },
+  { href: '/torneos', label: 'Torneos', icon: 'TR', section: 'Gestión' },
   { href: '/equipos', label: 'Equipos', icon: 'EQ', section: 'Gestión' },
   { href: '/jugadores', label: 'Jugadores', icon: 'JG', section: 'Gestión' },
   { href: '/entrenadores', label: 'Entrenadores', icon: 'EN', section: 'Gestión' },
@@ -13,8 +16,30 @@ const navItems = [
 
 const sections = ['Principal', 'Gestión', 'Análisis'];
 
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } finally {
+    window.location.assign('/login');
+  }
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
+  const [usuario, setUsuario] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then(async r => {
+        // Cookie presente pero sesión inválida/expirada: limpiar y volver al login
+        if (r.status === 401) return logout();
+        const d = await r.json();
+        if (!cancelled && d.usuario) setUsuario(d.usuario);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <aside className="sidebar">
@@ -22,7 +47,7 @@ export default function Sidebar() {
         <div className="logo-icon">SS</div>
         <div>
           <div className="logo-text">SportStats</div>
-          <div className="logo-sub">Basketball · UMAD</div>
+          <div className="logo-sub">Estadísticas deportivas</div>
         </div>
       </div>
 
@@ -49,8 +74,21 @@ export default function Sidebar() {
         })}
       </nav>
 
+      <div className="sidebar-user">
+        <div className="sidebar-user-avatar" aria-hidden="true">
+          {(usuario?.nombre || '?').trim().charAt(0).toUpperCase()}
+        </div>
+        <div className="sidebar-user-info">
+          <div className="sidebar-user-name">{usuario?.nombre || '…'}</div>
+          <div className="sidebar-user-email">{usuario?.email || ''}</div>
+        </div>
+        <button className="sidebar-logout" onClick={logout} title="Cerrar sesión">
+          Salir
+        </button>
+      </div>
+
       <div className="sidebar-footer">
-        SportStats v1.0 · 2026
+        SportStats v1.1 · 2026
       </div>
     </aside>
   );

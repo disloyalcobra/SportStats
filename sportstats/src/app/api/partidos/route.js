@@ -1,12 +1,16 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { withUser, ownsAll, badRequest } from '@/lib/auth';
+import { crearPartidoConEquipos, idsTipos, idTipo } from '@/lib/partidos';
 
-export async function GET() {
-  try {
-    const res = await db.execute(`
+export const GET = withUser(async (req, ctx, user) => {
+  const res = await db.execute({
+    sql: `
       SELECT p.*, ep.estadoPartido, tp.TipoPartido,
         e1.NombreEquipo as equipoLocal, e2.NombreEquipo as equipoVisitante,
-        se1.marcadorFinalE as ptsLocal, se2.marcadorFinalE as ptsVisitante
+        se1.marcadorFinalE as ptsLocal, se2.marcadorFinalE as ptsVisitante,
+        t.idTorneo, t.nombre as torneoNombre, COALESCE(t.tipo, 'torneo') as competicionTipo,
+        tpar.fase as competicionFase, tpar.ronda as competicionRonda
       FROM Partido p
       LEFT JOIN estadosPartido ep ON p.idEstadoPartido = ep.idEstadoPartido
       LEFT JOIN Tipo_partido tp ON p.idTipoPartido = tp.idTipoPartido
@@ -16,117 +20,61 @@ export async function GET() {
       LEFT JOIN Equipos e1 ON se1.idEquipo = e1.idEquipo
       LEFT JOIN estadisticasEquipo se2 ON se2.idPartido = p.idPartido AND se2.idEstadisticasEquipo != se1.idEstadisticasEquipo
       LEFT JOIN Equipos e2 ON se2.idEquipo = e2.idEquipo
+      LEFT JOIN TorneoPartidos tpar ON tpar.idPartido = p.idPartido
+      LEFT JOIN Torneos t ON t.idTorneo = tpar.idTorneo
+      WHERE p.idUsuario = ?
       ORDER BY p.fecha DESC
-    `);
+    `,
+    args: [user.idUsuario],
+  });
 
-    const catalogos = await db.batch([
-      { sql: 'SELECT * FROM estadosPartido' },
-      { sql: 'SELECT * FROM Tipo_partido' },
-      { sql: 'SELECT idEquipo, NombreEquipo, idCategoria, idDeporte, idRama FROM Equipos ORDER BY NombreEquipo' },
-    ]);
+  const tiposIds = await idsTipos();
+  const catalogos = await db.batch([
+    { sql: 'SELECT * FROM estadosPartido' },
+    { sql: 'SELECT * FROM Tipo_partido' },
+    {
+      sql: 'SELECT idEquipo, NombreEquipo, idCategoria, idDeporte, idRama FROM Equipos WHERE idUsuario = ? ORDER BY NombreEquipo',
+      args: [user.idUsuario],
+    },
+    {
+      sql: "SELECT idTorneo, nombre, COALESCE(tipo, 'torneo') AS tipo FROM Torneos WHERE idUsuario = ? ORDER BY COALESCE(fechaInicio, fechaCreacion) DESC",
+      args: [user.idUsuario],
+    },
+  ]);
 
-    return NextResponse.json({
-      partidos: res.rows,
-      catalogos: {
-        estados: catalogos[0].rows,
-        tipos: catalogos[1].rows,
-        equipos: catalogos[2].rows,
-      },
-    });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  // Partido "sin competición": tipo distinto de Amistoso y sin vínculo (datos previos a la spec 004)
+  const partidos = res.rows.map(p => ({
+    ...p,
+    sinCompeticion: !p.idTorneo && Number(p.idTipoPartido) !== tiposIds.amistoso,
+  }));
+
+  return NextResponse.json({
+    partidos,
+    catalogos: {
+      estados: catalogos[0].rows,
+      tipos: catalogos[1].rows,
+      equipos: catalogos[2].rows,
+      competiciones: catalogos[3].rows,
+      idTipoAmistoso: tiposIds.amistoso,
+    },
+  });
+});
+
+// POST /api/partidos — solo crea AMISTOSOS. Los partidos de temporada, playoffs y torneo
+// se generan desde su competición (spec 004); cualquier idTipoPartido recibido se ignora.
+export const POST = withUser(async (req, ctx, user) => {
+  const { fecha, horaInicio, horaTermino, idEstadoPartido, ubicacion, idEquipoLocal, idEquipoVisitante } = await req.json();
+  const idTipoPartido = await idTipo('amistoso');
+
+  if (!(await ownsAll('Equipos', [idEquipoLocal, idEquipoVisitante].filter(Boolean), user.idUsuario))) {
+    throw badRequest('Equipo no válido');
   }
-}
 
-export async function POST(req) {
-  try {
-    const body = await req.json();
-    const { fecha, horaInicio, horaTermino, idEstadoPartido, idTipoPartido, ubicacion, idEquipoLocal, idEquipoVisitante } = body;
-    
-    // 1. Insertar Partido (por defecto Estado Proximo = 4 si no se especifica)
-    const estadoPartido = idEstadoPartido || 4;
-    const resPartido = await db.execute({
-      sql: 'INSERT INTO Partido (fecha, horaInicio, horaTermino, idEstadoPartido, idTipoPartido, ubicacion, localia) VALUES (?,?,?,?,?,?,1)',
-      args: [fecha, horaInicio, horaTermino, estadoPartido, idTipoPartido, ubicacion],
-    });
-    
-    const idPartido = Number(resPartido.lastInsertRowid);
-    
-    if (idEquipoLocal && idEquipoVisitante) {
-      // 2. Inicializar estadisticasEquipo (insertamos local primero para que tenga menor idEstadisticasEquipo)
-      const resLocalStats = await db.execute({
-        sql: 'INSERT INTO estadisticasEquipo (idEquipo, idPartido, marcadorPrimerCuartoE, marcadorSegundoCuartoE, marcadorTercerCuartoE, marcadorCuartoCuartoE, marcadorFinalE, PTS) VALUES (?, ?, 0, 0, 0, 0, 0, 0)',
-        args: [idEquipoLocal, idPartido],
-      });
-      const idLocalStats = Number(resLocalStats.lastInsertRowid);
+  const idPartido = await crearPartidoConEquipos({
+    idUsuario: user.idUsuario,
+    fecha, horaInicio, horaTermino, idEstadoPartido, idTipoPartido, ubicacion,
+    idEquipoLocal, idEquipoVisitante,
+  });
 
-      const resVisitanteStats = await db.execute({
-        sql: 'INSERT INTO estadisticasEquipo (idEquipo, idPartido, marcadorPrimerCuartoE, marcadorSegundoCuartoE, marcadorTercerCuartoE, marcadorCuartoCuartoE, marcadorFinalE, PTS) VALUES (?, ?, 0, 0, 0, 0, 0, 0)',
-        args: [idEquipoVisitante, idPartido],
-      });
-      const idVisitanteStats = Number(resVisitanteStats.lastInsertRowid);
-
-      // 3. Cargar jugadores activos (idEstadoJugador = 1) de ambos equipos
-      const [jugadoresLocal, jugadoresVisitante] = await Promise.all([
-        db.execute({
-          sql: 'SELECT idJugador FROM Jugadores WHERE idEquipo = ? AND idEstadoJugador = 1',
-          args: [idEquipoLocal],
-        }),
-        db.execute({
-          sql: 'SELECT idJugador FROM Jugadores WHERE idEquipo = ? AND idEstadoJugador = 1',
-          args: [idEquipoVisitante],
-        }),
-      ]);
-
-      // 4. Insertar jugadores a JugadoresPartido e inicializar sus estadísticas a 0
-      const batchQueries = [];
-      
-      for (const row of jugadoresLocal.rows) {
-        batchQueries.push({
-          sql: 'INSERT INTO JugadoresPartido (idJugador, idPartido, Localia) VALUES (?, ?, 1)',
-          args: [row.idJugador, idPartido],
-        });
-      }
-      
-      for (const row of jugadoresVisitante.rows) {
-        batchQueries.push({
-          sql: 'INSERT INTO JugadoresPartido (idJugador, idPartido, Localia) VALUES (?, ?, 0)',
-          args: [row.idJugador, idPartido],
-        });
-      }
-
-      if (batchQueries.length > 0) {
-        await db.batch(batchQueries);
-      }
-
-      // 5. Vincular jugadores en estadisticasJugador con su idEstadisticasEquipo correspondiente
-      const alineados = await db.execute({
-        sql: 'SELECT idJugadoresPartido, idJugador, Localia FROM JugadoresPartido WHERE idPartido = ?',
-        args: [idPartido],
-      });
-
-      const statsJugadorQueries = [];
-      for (const row of alineados.rows) {
-        const idStatsEq = row.Localia === 1 ? idLocalStats : idVisitanteStats;
-        statsJugadorQueries.push({
-          sql: `INSERT INTO estadisticasJugador 
-            (idJugadoresPartido, idEstadisticasEquipo, minutos, puntos, promedioPuntos,
-             reboteOfensivo, reboteDefensivo, totalRebotes, asistencia, perdida, robos, bloqueos,
-             faltasPersonales, two_pm, two_pa, three_pm, three_pa, ftm, fta, eficiencia, PFD, PIR, EFF, plus_minus)
-            VALUES (?, ?, 0, 0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
-          args: [row.idJugadoresPartido, idStatsEq],
-        });
-      }
-
-      if (statsJugadorQueries.length > 0) {
-        await db.batch(statsJugadorQueries);
-      }
-    }
-    
-    return NextResponse.json({ id: idPartido }, { status: 201 });
-  } catch (error) {
-    console.error('Error creating partido:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
+  return NextResponse.json({ id: idPartido }, { status: 201 });
+});

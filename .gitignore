@@ -23,3 +23,6 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Artefactos de pruebas del navegador
+.playwright-mcp/

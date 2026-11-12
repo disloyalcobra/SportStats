@@ -1,60 +1,51 @@
 import { db } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { withUser, assertOwns, ownsAll, badRequest, notFound } from '@/lib/auth';
 
-export async function PUT(req, { params }) {
-  try {
-    const { id } = await params;
-    const body = await req.json();
-    const {
-      NombreEntrenador, ApellidoPaEntrenador, ApellidoMaEntrenador,
-      FechaNacimiento_entrenador, LugarDeOrigenEntrenador,
-      email, telefono, equiposIds,
-    } = body;
+export const PUT = withUser(async (req, { params }, user) => {
+  const { id } = await params;
+  await assertOwns('Entrenadores', id, user.idUsuario, 'Entrenador');
 
-    await db.execute({
+  const {
+    NombreEntrenador, ApellidoPaEntrenador, ApellidoMaEntrenador,
+    FechaNacimiento_entrenador, LugarDeOrigenEntrenador,
+    email, telefono, equiposIds,
+  } = await req.json();
+
+  const ids = Array.isArray(equiposIds) ? equiposIds : [];
+  if (!(await ownsAll('Equipos', ids, user.idUsuario))) throw badRequest('Equipo no válido');
+
+  await db.batch([
+    {
       sql: `UPDATE Entrenadores SET
         NombreEntrenador = ?, ApellidoPaEntrenador = ?, ApellidoMaEntrenador = ?,
         FechaNacimiento_entrenador = ?, LugarDeOrigenEntrenador = ?,
         email = ?, telefono = ?
-        WHERE idEntrenador = ?`,
+        WHERE idEntrenador = ? AND idUsuario = ?`,
       args: [
         NombreEntrenador, ApellidoPaEntrenador, ApellidoMaEntrenador || null,
         FechaNacimiento_entrenador || null, LugarDeOrigenEntrenador || null,
         email || null, telefono || null,
-        id,
+        id, user.idUsuario,
       ],
-    });
-
+    },
     // Actualizar relaciones en EquiposEntrenadores
-    await db.execute({
-      sql: 'DELETE FROM EquiposEntrenadores WHERE idEntrenador = ?',
-      args: [id],
-    });
+    { sql: 'DELETE FROM EquiposEntrenadores WHERE idEntrenador = ?', args: [id] },
+    ...ids.map(idEquipo => ({
+      sql: 'INSERT INTO EquiposEntrenadores (idEntrenador, idEquipo) VALUES (?, ?)',
+      args: [id, idEquipo],
+    })),
+  ], 'write');
 
-    if (Array.isArray(equiposIds) && equiposIds.length > 0) {
-      const queries = equiposIds.map(idEquipo => ({
-        sql: 'INSERT INTO EquiposEntrenadores (idEntrenador, idEquipo) VALUES (?, ?)',
-        args: [id, idEquipo],
-      }));
-      await db.batch(queries);
-    }
+  return NextResponse.json({ success: true });
+});
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error updating entrenador:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-export async function DELETE(req, { params }) {
-  try {
-    const { id } = await params;
-    await db.execute({
-      sql: 'DELETE FROM Entrenadores WHERE idEntrenador = ?',
-      args: [id],
-    });
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
+export const DELETE = withUser(async (req, { params }, user) => {
+  const { id } = await params;
+  const res = await db.execute({
+    sql: 'DELETE FROM Entrenadores WHERE idEntrenador = ? AND idUsuario = ?',
+    args: [id, user.idUsuario],
+  });
+  if (res.rowsAffected === 0) throw notFound('Entrenador');
+  return NextResponse.json({ success: true });
+});
